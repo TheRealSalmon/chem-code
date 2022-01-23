@@ -4,7 +4,7 @@ import numpy as np
 import time
 import argparse
 
-def chembl_to_dataframe(assay_chembl_id, quiet):
+def chembl_to_dataframe(assay_chembl_id, thresh, quiet):
     """
     Fetches assay data from ChEMBL and returns a pandas Dataframe containing the canonical
     SMILES and the ChEMBL value. 
@@ -56,33 +56,35 @@ def chembl_to_dataframe(assay_chembl_id, quiet):
     # then we remove any entries that are perfect duplicates
     df = df.drop_duplicates()
     
-    # # next we convert the assay value into a log value. we create a dict that converts the unit type
-    # #   into the corresponding power of 10
-    # units = {'nM': '1000000000',
-    #          'uM': '1000000',
-    #          'mM': '1000'}
-    # # then we use replace() to feed the data in the column 'standard_units' through the dict called 'units'
-    # #   to repopulate the column 'standard_units' with the right power of 10 for the next step. note that we
-    # #   have to retype this data as floats for the next step
-    # df = df.replace({'standard_units': units})
-    # df = df.astype({'standard_value': 'float64', 'standard_units': 'float64'})
-    # # here we create a new column called 'p_potency' and fill it with the log potency values
-    # df['p_potency'] = -np.log10(df.standard_value / df.standard_units)
-    # # finally we get rid of all the columns we don't need 
-    # df = df.drop(columns=['standard_type', 'standard_units', 'standard_value', 'type', 'units', 'value'])
-    
+    # finally we remove columns we don't want and rename things to be convenient for us
     df = df.drop(columns=['standard_type', 'standard_units', 'standard_value', 'type', 'units'])
+    df = df.rename(columns={'canonical_smiles': 'smiles', 'value': 'label'})
+    # we have to retype the label column from str to float for this next part
+    df = df.astype({'label': 'float64'})
+        
+    # first we find all entries with duplicated SMILES strings then we drop those entries 
+    #   from the original dataframe, we'll bring them back later
+    dup_smi = df[df.duplicated('smiles', keep=False)]
+    df = df.drop(dup_smi.index, axis=0)
+    
+    # here, for each SMILES string among the duplicates, we find the standard deviation.
+    #   if it is below the threshold, we save the mean of the duplicated values
+    clean_dup_list = []
+    smi_list = list(set(dup_smi.smiles))
+    for smi in smi_list:
+        p = dup_smi.loc[dup_smi['smiles'] == smi].label
+        if np.std(p) < thresh:
+            clean_dup_list.append([smi, np.mean(p)])
+    
+    # then we take those values and put them back into the dataframe
+    uni_smi = pd.DataFrame(clean_dup_list, columns=['smiles', 'label'])
+    df = df.append(uni_smi, ignore_index=True)
     
     if not quiet:
+        print(f'The shape of the final dataset is {df.shape}')
         print('The last five entries are:')
         print(df.tail())
         print('')
-    
-    # if we run into a case where a ChEMBL assay has repeated data for the same compound, we'll have to do some
-    #   more coding. until then, this will suffice to alert me if it happens
-    dup_smi = df[df.duplicated('canonical_smiles')]
-    if not dup_smi.empty:
-        print('Some SMILES strings are duplicated. Time to do some more coding!\n')
     
     if not quiet:
         print(f'Wall time: {time.time()-start_time}')
@@ -92,10 +94,11 @@ def chembl_to_dataframe(assay_chembl_id, quiet):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='takes a ChEMBL assay ID and returns a pandas Dataframe object containing the canonical SMILES and the ChEMBL value')
     parser.add_argument('assay_id', help='the ChEMBL assay ID you want to fetch data for')
+    parser.add_argument('thresh', help='this argument sets the threshold for removing duplicates', type=float)
     parser.add_argument('-q', '--quiet', help='this flag suppresses any printing to the console', action='store_true')
     args = parser.parse_args()
     
-    df = chembl_to_dataframe(args.assay_id, args.quiet)
+    df = chembl_to_dataframe(args.assay_id, args.thresh, args.quiet)
     if not args.quiet:
         print(f'\nNow saving a pandas Dataframe to {args.assay_id}.pkl')
     df.to_pickle(f'./{args.assay_id}.pkl')
