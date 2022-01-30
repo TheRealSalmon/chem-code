@@ -93,10 +93,10 @@ def chembl_to_dataframe(assay_chembl_id, thresh, quiet):
 
     return df
 
-if __name__ == '__main__':
+def main():
     parser = argparse.ArgumentParser(description='takes a ChEMBL assay ID and returns a pandas Dataframe object containing the canonical SMILES and the ChEMBL value')
     parser.add_argument('assay_id', help='the ChEMBL assay ID you want to fetch data for')
-    parser.add_argument('thresh', help='this argument sets the threshold for removing duplicates', type=float)
+    parser.add_argument('thresh', help='this argument sets the threshold for removing duplicates, 0.1 is a good default for log values', type=float)
     parser.add_argument('-q', '--quiet', help='this flag suppresses any printing to the console', action='store_true')
     args = parser.parse_args()
 
@@ -104,3 +104,6 @@ if __name__ == '__main__':
     if not args.quiet:
         print(f'\nNow saving a pandas Dataframe to {args.assay_id}.pkl')
     df.to_pickle(f'./{args.assay_id}.pkl')
+
+if __name__ == '__main__':
+    main()
