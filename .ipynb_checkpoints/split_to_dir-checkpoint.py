@@ -42,10 +42,10 @@ def df_to_ds(df):
     return dc.data.DiskDataset.from_numpy(X=X, y=np.vstack(df.label.to_numpy()), ids=df.smiles)
 
 def main():
-    parser = argparse.ArgumentParser(description='meep')
+    parser = argparse.ArgumentParser(description='takes a pd.Dataframe containing SMILES under "smiles" and a assay value under "label" and splits them using a specific dc.splits splitter')
     parser.add_argument('path_to_pickle', help='the path and filename of the pd.Dataframe pickle')
     parser.add_argument('split', help='the dc.splits splitter used to create the test set, valid options are random, fingerprint, butina, or scaffold')
-    parser.add_argument('out_dir', help='the output directory containing the pd.Dataframe pickles for the train/test splits')
+    parser.add_argument('out_dir', help='the output directory containing the pd.Dataframe pickles for the split dataframe pickles, the type of split will automatically appended')
     # parser.add_argument('-q', '--quiet', help='this flag suppresses any printing to the console', action='store_true')
     args = parser.parse_args()
     
@@ -84,10 +84,6 @@ def main():
     
     # finally we convert our DiskDataset back into Dataframes and pickle them 
     for i,tt in enumerate(train_test_splits):
-        train_df = tt[0].to_dataframe()
-        train_df = train_df.rename({'ids': 'smiles', 'y': 'label'}, axis='columns').drop(['X', 'w'], axis='columns')
-        train_df.to_pickle(f'{out_dir_name}/train{i}')
-
         test_df = tt[1].to_dataframe()
         test_df = test_df.rename({'ids': 'smiles', 'y': 'label'}, axis='columns').drop(['X', 'w'], axis='columns')
         test_df.to_pickle(f'{out_dir_name}/test{i}')
@@ -98,5 +94,5 @@ if __name__ == '__main__':
 def get_df_from_splits(input_dir):
     test = []
     for i in range(5):
-        test.append((pd.read_pickle(f'{input_dir}/train{i}'), pd.read_pickle(f'{input_dir}/test{i}')))
+        test.append(pd.read_pickle(f'{input_dir}/test{i}'))
     return test
