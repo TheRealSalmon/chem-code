@@ -56,9 +56,9 @@ def random_forest_model_from_param(param):
     return rf_model
 
 def random_forest_optuna(trial, kfold):
-    rf_model = random_forest_model_from_trial(trial)
     mse = []
     for k in kfold:
+        rf_model = random_forest_model_from_trial(trial)
         rf_model.fit(k[0].complete_shuffle())
         y_pred = rf_model.predict(k[1])
         y_meas = k[1].y
@@ -86,7 +86,6 @@ def main():
     
     output_info = []
     for i,tt in enumerate(train_tests):
-        print(i)
         splitter = dc.splits.RandomSplitter()
         kfold = splitter.k_fold_split(dataset=tt[0], k=5)
         study = optuna.create_study(direction='minimize')
@@ -99,8 +98,9 @@ def main():
             y_pred = tuned_rf_model.predict(tt[1])
             y_meas = tt[1].y
             test_mse.append(dc.metrics.mean_squared_error(y_meas, y_pred))
-
+        
         output_info.append((i, study.best_value, str(study.best_params), sum(test_mse)/len(test_mse), test_mse))
+        print(f'completed split {i} out of 5')
         
     out_df = pd.DataFrame(output_info, columns=['split_index', 'avg_valid_mse', 'best_params', 'avg_test_mse', 'test_mses'])
     out_df.to_csv(path_or_buf=f'{args.path_to_dir}/rf.csv')
