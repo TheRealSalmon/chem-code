@@ -1,4 +1,4 @@
-# chem-scripts
+# chem-code
 
 Hi, this is where I keep my Python scripts related to cheminformatics and molecular machine learning.
 
