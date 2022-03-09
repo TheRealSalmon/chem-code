@@ -11,4 +11,10 @@ alignment.
 **utils.py**
 <br>
 utils.py contains a hodgepodge of useful Python functions I've written throughout 
-my learning. 
+my learning. Some neat examples include:
+* get_low_e_conformer
+  * uses RDKit to generate conformers and find the lowest MMFF energy conformer
+* remove_nonpolar_hs
+  * removes all nonpolar (C-H) hydrogens from a molecules
+* display_3d_mol
+  * uses py3Dmol to display an RDKit Mol in jupyter-lab
