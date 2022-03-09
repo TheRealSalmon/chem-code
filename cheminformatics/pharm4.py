@@ -1,6 +1,6 @@
 from rdkit import Chem, Geometry
 from rdkit.Chem import AllChem
-from utils import (get_low_energy_conformer, remove_nonpolar_hs, 
+from pharm4_utils import (get_low_energy_conformer, remove_nonpolar_hs, 
                   get_atom_ids_in_substruct)
 import py3Dmol
 

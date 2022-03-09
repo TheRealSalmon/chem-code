@@ -1,6 +1,5 @@
-from rdkit import Chem, Geometry
+from rdkit import Chem
 from rdkit.Chem import rdDistGeom, rdMolDescriptors, AllChem
-import py3Dmol
 
 def get_low_energy_conformer(input_mol: Chem.rdchem.Mol, 
                              max_iters: int = 200) -> Chem.rdchem.Mol:
@@ -104,59 +103,6 @@ def remove_nonpolar_hs(input_mol: Chem.rdchem.Mol) -> Chem.rdchem.Mol:
         rwmol.RemoveAtom(h)
 
     return rwmol.GetMol()
-
-def display_3d_mol(mol: Chem.rdchem.Mol, 
-                   nonpolar_h: bool = False) -> None:
-    """Use py3Dmol to visualize mol in 3D.
-
-    Examples
-    --------
-    mol = Chem.MolFromSmiles('OCCCO')
-    mol = get_low_energy_conformer(mol)
-    display_3d_mol(mol)
-
-    Parameters
-    ----------
-    mol: `rdkit.Chem.rdchem.Mol`
-        The input RDKit mol object with an embedded 3D conformer. 
-    nonpolar_h: `bool`, default = False
-        Whether or not to show nonpolar (C-H) hydrogens"""
-    mol_block = ''
-    if nonpolar_h:
-        mol_block = Chem.rdmolfiles.MolToMolBlock(mol, includeStereo=True)
-    else:
-        mol_block = Chem.rdmolfiles.MolToMolBlock(remove_nonpolar_hs(mol), includeStereo=True)
-    view = py3Dmol.view(data=mol_block, 
-                        style={'stick':{'colorscheme':'grayCarbon'}})
-    view.show()
-
-def reflect_mol(input_mol: Chem.rdchem.Mol) -> Chem.rdchem.Mol:
-    """Reflects 3D xyz coordinates of RDKit Mol object.
-
-    Examples
-    --------
-    mol = Chem.MolFromSmiles('OCCCO')
-    mol = get_low_energy_conformer(mol)
-    reflect_mol = reflect_mol(mol)
-
-    Parameters
-    ----------
-    input_mol: `rdkit.Chem.rdchem.Mol`
-        The input RDKit mol object with an embedded 3D conformer. 
-
-    Returns
-    -------
-    `rdkit.Chem.rdchem.Mol`
-        An RDKit Mol object reflected across the x-axis."""
-    input_conf = input_mol.GetConformer()
-    reflect_mol = Chem.Mol(input_mol, True)
-    num_atoms = reflect_mol.GetNumAtoms()
-    reflect_conf = Chem.rdchem.Conformer(num_atoms)
-    for i in range(num_atoms):
-        atom_pos = input_conf.GetAtomPosition(i)
-        reflect_conf.SetAtomPosition(i, Geometry.rdGeometry.Point3D(-atom_pos.x, atom_pos.y, atom_pos.z))
-    reflect_mol.AddConformer(reflect_conf)
-    return reflect_mol
 
 def get_atom_ids_in_substruct(input_mol: Chem.rdchem.Mol, 
                               smarts_substruct: str, 
