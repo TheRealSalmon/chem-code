@@ -1,4 +1,4 @@
-from rdkit import Chem
+from rdkit import Chem, Geometry
 from rdkit.Chem import rdDistGeom, rdMolDescriptors, AllChem
 import py3Dmol
 
@@ -46,7 +46,7 @@ def get_low_energy_conformer(input_mol: Chem.rdchem.Mol,
         raise ValueError('Too many rotatable bonds.')
 
     # Optimize all conformers embeded in mol.
-    opt = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=200)
+    opt = AllChem.MMFFOptimizeMoleculeConfs(mol, maxIters=max_iters)
 
     # Find the index of lowest energy conformer.
     energy = 1000.0
@@ -118,7 +118,7 @@ def display_3d_mol(mol: Chem.rdchem.Mol,
     Parameters
     ----------
     mol: `rdkit.Chem.rdchem.Mol`
-        The RDKit Mol object to be visualized.
+        The input RDKit mol object with an embedded 3D conformer. 
     nonpolar_h: `bool`, default = False
         Whether or not to show nonpolar (C-H) hydrogens"""
     mol_block = ''
@@ -130,3 +130,59 @@ def display_3d_mol(mol: Chem.rdchem.Mol,
                         style={'stick':{'colorscheme':'grayCarbon'}})
     view.show()
 
+def reflect_mol(input_mol: Chem.rdchem.Mol) -> Chem.rdchem.Mol:
+    """Reflects 3D xyz coordinates of RDKit Mol object.
+
+    Examples
+    --------
+    mol = Chem.MolFromSmiles('OCCCO')
+    mol = get_low_energy_conformer(mol)
+    reflect_mol = reflect_mol(mol)
+
+    Parameters
+    ----------
+    input_mol: `rdkit.Chem.rdchem.Mol`
+        The input RDKit mol object with an embedded 3D conformer. 
+
+    Returns
+    -------
+    `rdkit.Chem.rdchem.Mol`
+        An RDKit Mol object reflected across the x-axis."""
+    input_conf = input_mol.GetConformer()
+    reflect_mol = Chem.Mol(input_mol, True)
+    num_atoms = reflect_mol.GetNumAtoms()
+    reflect_conf = Chem.rdchem.Conformer(num_atoms)
+    for i in range(num_atoms):
+        atom_pos = input_conf.GetAtomPosition(i)
+        reflect_conf.SetAtomPosition(i, Geometry.rdGeometry.Point3D(-atom_pos.x, atom_pos.y, atom_pos.z))
+    reflect_mol.AddConformer(reflect_conf)
+    return reflect_mol
+
+def get_atom_ids_in_substruct(input_mol: Chem.rdchem.Mol, 
+                              smarts_substruct: str, 
+                              unique_and_sorted: bool = True) -> list:
+    """Returns all atoms that are part of a SMARTS substructure.
+
+    Parameters
+    ----------
+    input_mol: `rdkit.Chem.rdchem.Mol`
+        The input RDKit mol object.
+    smarts_substruct: `str`
+        The SMARTS substructure of interest.
+    unique_and_sorted: `bool`, default = True
+        If True, the returned list will not have duplicates and will be sorted.
+        It is useful to set to false when looking at ring systems.
+
+    Returns
+    -------
+    atom_ids: `list`
+        A list of atoms that are part of the specified SMARTS substructure."""
+
+    tuple_of_tuples = input_mol.GetSubstructMatches(Chem.MolFromSmarts(smarts_substruct))
+    atom_ids = []
+    for i in range(len(tuple_of_tuples)):
+        for j in range(len(tuple_of_tuples[i])):
+            atom_ids.append(tuple_of_tuples[i][j])
+    if unique_and_sorted:
+        atom_ids = sorted(set(atom_ids))
+    return atom_ids
