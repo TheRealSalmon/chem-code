@@ -1,5 +1,6 @@
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors, rdDistGeom, AllChem
+import py3Dmol
 import tempfile
 import subprocess
 
@@ -69,15 +70,15 @@ def get_low_energy_conformer(input_mol: Chem.rdchem.Mol,
     low_e_mol.AddConformer(mol.GetConformer(index))
     return low_e_mol
 
-def xtb_single_point(mol: Chem.rdchem.Mol,
+def xtb_single_point(input_mol: Chem.rdchem.Mol,
                      charge: int = 0,
                      e_state: int = 0,
-                     solvent: str = '') -> float:
+                     solvent: str = '',
+                     mmff_max_iters: int = 200) -> float:
     """Use xtb to calculate the single point energy in Hartrees.
     
-    Takes an RDKit Mol object with embedded conformer and calculates a single
-    point energy using xtb. Requires prior installation of xtb, which for my
-    machine installed correctly with conda. 
+    Takes an RDKit Mol object and calculates a single point energy using xtb. 
+    Requires prior installation of xtb.
 
     Examples
     --------
@@ -99,15 +100,17 @@ def xtb_single_point(mol: Chem.rdchem.Mol,
         The solvent used for xtb calculations. Choices are acetone, 
         acetonitrile, ch2cl2, chcl3, cs2, dmf, dmso, ether, h2o, methanol,
         n-hexane, thf, toluene. The default is no solvent.
+    mmff_max_iters: `int`, default = 200
+        The number of iterations RDKit's MMFF optimizer will use.
 
     Returns
     -------
-    `rdkit.Chem.rdchem.Mol`
-        An RDKit Mol object embedded with the (hopefully) lowest energy
-        conformer"""
-    # makes sure that there is a conformer embedded in mol
+    `float`
+        The total energy of the system in Hartrees."""
+    # checks for embedded conformer, if not found, adds an MMFF conformer
+    mol = Chem.rdchem.Mol(input_mol)
     if len(mol.GetConformers()) == 0:
-        raise AttributeError('could not find 3D conformer')
+        mol = get_low_energy_conformer(mol, mmff_max_iters)
 
     # runs calculations in tmp directory
     with tempfile.TemporaryDirectory() as tmp:
@@ -127,4 +130,139 @@ def xtb_single_point(mol: Chem.rdchem.Mol,
         for line in reversed(xtb_out):
             if 'TOTAL ENERGY' in line:
                 return line.split()[3]
+
+def xtb_geom_opt(input_mol: Chem.rdchem.Mol,
+                 charge: int = 0,
+                 e_state: int = 0,
+                 solvent: str = '',
+                 mmff_max_iters: int = 200) -> Chem.rdchem.Mol:
+    """Use xtb to perform a geometry optimization.
+
+    Examples
+    --------
+    mol = Chem.MolFromSmiles('OCCCO')
+    mol = get_low_energy_conformer(mol)
+    mol = xtb_geom_opt(mol)
+    energy = xtb_single_point(mol)
+
+    Parameters
+    ----------
+    mol: `rdkit.Chem.rdchem.Mol`
+        The input RDKit mol object. 
+    charge: `int`, default = 0
+        The total charge of the molecule
+    e_state: `int`, default = 0
+        N_alpha - N_beta. The difference between the number of spin up and
+        spin down electrons. Should usually be 0 unless you are running open
+        shell or triplet calculations.
+    solvent: `str`, default = ''
+        The solvent used for xtb calculations. Choices are acetone, 
+        acetonitrile, ch2cl2, chcl3, cs2, dmf, dmso, ether, h2o, methanol,
+        n-hexane, thf, toluene. The default is no solvent.
+    mmff_max_iters: `int`, default = 200
+        The number of iterations RDKit's MMFF optimizer will use.
+
+    Returns
+    -------
+    `rdkit.Chem.rdchem.Mol`
+        An RDKit Mol object embedded with an optimized structure."""
+    # makes sure that there is a conformer embedded in mol
+    mol = Chem.rdchem.Mol(input_mol)
+    if len(mol.GetConformers()) == 0:
+        mol = get_low_energy_conformer(mol, mmff_max_iters)
+
+    xtb_xyz = ''
+    # runs calculations in tmp directory
+    with tempfile.TemporaryDirectory() as tmp:
+        # create .xyz file in the tmp directory
+        Chem.rdmolfiles.MolToXYZFile(mol, f'{tmp}/input.xyz')
+        # run xtb on the input file
+        xtb_args = ['-c', str(charge), '-u', str(e_state)]
+        if solvent != '':
+            xtb_args += ['-g', solvent]
+        proc = subprocess.run(['xtb', 'input.xyz', '--opt'] + xtb_args, 
+                              cwd=tmp,
+                              stdout=subprocess.PIPE, 
+                              stderr=subprocess.DEVNULL)
+        if proc.returncode != 0:
+            raise xtbError('xtb abnormal termination')
+        with open(f'{tmp}/xtbopt.xyz') as file:
+            # first two lines of xyz are atom count and comments
+            # last line is blank
+            xtb_xyz = file.read().split('\n')[2:len(xtb_xyz)-1]
+
+    # creates a new RDKit Mol with embedded conformer from the xtb xyz output
+    mol.RemoveAllConformers()
+    conf = Chem.rdchem.Conformer(mol.GetNumAtoms())
+    for i, line in enumerate(xtb_xyz):
+        ls = line.split()
+        x, y, z = float(ls[1]), float(ls[2]), float(ls[3])
+        conf.SetAtomPosition(i, Geometry.rdGeometry.Point3D(x, y, z))
+    mol.AddConformer(conf)
+    return mol
+
+def remove_nonpolar_hs(input_mol: Chem.rdchem.Mol) -> Chem.rdchem.Mol:
+    """Remove nonpolar hydrogen atoms.
+    
+    Finds all hydrogens bonded to carbon atoms and returns an RDKit Mol object
+    with these hydrogens removed.
+
+    Examples
+    --------
+    mol = Chem.MolFromSmiles('OCCCO')
+    mol_polar_h = remove_nonpolar_hs(mol)
+
+    Parameters
+    ----------
+    input_mol: `rdkit.Chem.rdchem.Mol`
+        The input RDKit mol object. 
+
+    Returns
+    -------
+    `rdkit.Chem.rdchem.Mol`
+        An RDKit Mol object with all nonpolar hydrogens removed."""
+    # Make a copy of input mol.
+    mol = Chem.rdchem.Mol(input_mol)
+
+    # Find indices of all hydrogens bonded to carbons.
+    nonpolar_hs = []
+    for atom in mol.GetAtoms():
+        if atom.GetAtomicNum() == 6:
+            for n in atom.GetNeighbors():
+                if n.GetAtomicNum() == 1:
+                    nonpolar_hs.append(n.GetIdx())
+    # The list needs to be ordered from high-to-low to avoid indexing issues.
+    nonpolar_hs = sorted(nonpolar_hs, reverse=True)
+
+    # We create a Read/Write Mol and remove the nonpolar hydrogens.
+    rwmol = Chem.rdchem.RWMol(mol)
+    for h in nonpolar_hs:
+        rwmol.RemoveAtom(h)
+
+    return rwmol.GetMol()
+
+def display_3d_mol(mol: Chem.rdchem.Mol, 
+                   nonpolar_h: bool = False) -> None:
+    """Use py3Dmol to visualize mol in 3D.
+
+    Examples
+    --------
+    mol = Chem.MolFromSmiles('OCCCO')
+    mol = get_low_energy_conformer(mol)
+    display_3d_mol(mol)
+
+    Parameters
+    ----------
+    mol: `rdkit.Chem.rdchem.Mol`
+        The input RDKit mol object with an embedded 3D conformer. 
+    nonpolar_h: `bool`, default = False
+        Whether or not to show nonpolar (C-H) hydrogens"""
+    mol_block = ''
+    if nonpolar_h:
+        mol_block = Chem.rdmolfiles.MolToMolBlock(mol, includeStereo=True)
+    else:
+        mol_block = Chem.rdmolfiles.MolToMolBlock(remove_nonpolar_hs(mol), includeStereo=True)
+    view = py3Dmol.view(data=mol_block, 
+                        style={'stick':{'colorscheme':'grayCarbon'}})
+    view.show()
 
